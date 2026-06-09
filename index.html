@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>神秘禮物盒班級抽籤系統</title>
+  
+  <!-- 引入 Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 引入 Babel 讓瀏覽器即時編譯 React JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 設定 Import Map 以匯入 React 與 Lucide 圖示 -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.292.0"
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-100 overflow-hidden">
+  <div id="root"></div>
+
+  <!-- 應用程式核心邏輯 -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Settings, RotateCcw, Lock, Unlock, History, Volume2, VolumeX, X, Trophy, AlertCircle, Gift, Star, Calendar, Maximize, Minimize, Trash2, Copy, CheckCircle2, Download, EyeOff, Save, Upload } from 'lucide-react';
+
+    const DEFAULT_STUDENTS = `1 王小明\n2 陳小華\n3 林小美\n4 張大頭\n5 李阿呆\n6 趙可愛\n7 孫悟空\n8 豬八戒\n9 沙悟淨\n10 唐三藏`;
+    const DEFAULT_SETTINGS = { title: '神秘幸運得主', inputMode: 'list', rawList: DEFAULT_STUDENTS, totalSeats: 30, emptySeats: '', displayMode: 'both', includeEmpty: true, theme: 'standard', fastAnim: false, soundEnabled: true, isLocked: true, drawCount: 1, showAvatars: true, hideRemaining: false };
+    const THEMES = {
+      standard: { name: '童趣派對', bg: 'bg-gradient-to-br from-pink-100 via-purple-100 to-indigo-100', boxColors: ['#FF9AA2', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA'] },
+      christmas: { name: '聖誕驚喜', bg: 'bg-gradient-to-br from-red-100 to-green-200', boxColors: ['#D32F2F', '#388E3C', '#FBC02D', '#FFFFFF'] },
+      newyear: { name: '新年福袋', bg: 'bg-gradient-to-br from-amber-100 via-yellow-100 to-orange-200', boxColors: ['#D32F2F', '#C62828', '#E53935', '#B71C1C'] },
+      space: { name: '星空探險', bg: 'bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900', boxColors: ['#FF007F', '#00D4FF', '#7000FF', '#FFD700', '#00FF88'] },
+      ocean: { name: '深海尋寶', bg: 'bg-gradient-to-br from-cyan-900 via-blue-800 to-blue-900', boxColors: ['#00FFFF', '#20B2AA', '#48D1CC', '#FFA500', '#FF4500'] }
+    };
+    const ENCOURAGEMENTS = ["勇氣滿分！", "運氣爆棚！", "今天你是主角！", "掌聲鼓勵！", "太棒了！"];
+    const AVATARS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🦉', '🦄', '🦖'];
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+    const playSound = (type, isEnabled) => {
+      if (!isEnabled) return;
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator(), gainNode = audioCtx.createGain();
+      osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+      if (type === 'click') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+        gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+      } else if (type === 'shake') {
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now);
+        for (let i = 0; i < 5; i++) { osc.frequency.linearRampToValueAtTime(150, now + i * 0.1 + 0.05); osc.frequency.linearRampToValueAtTime(100, now + i * 0.1 + 0.1); }
+        gainNode.gain.setValueAtTime(0.1, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.5);
+        osc.start(now); osc.stop(now + 0.5);
+      } else if (type === 'tada') {
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, now); osc.frequency.setValueAtTime(659.25, now + 0.1); osc.frequency.setValueAtTime(783.99, now + 0.2); osc.frequency.setValueAtTime(1046.50, now + 0.3);
+        gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+        osc.start(now); osc.stop(now + 1.5);
+      } else if (type === 'empty') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+        gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+        osc.start(now); osc.stop(now + 0.5);
+      }
+    };
+
+    const ThemeIcon = ({ theme, color, isOpened, index = 0 }) => {
+      const commonClass = isOpened ? "w-full h-full absolute top-0 left-0 opacity-40 grayscale" : "w-full h-full drop-shadow-xl";
+      switch (theme) {
+        case 'christmas': return (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><rect x="42" y="70" width="16" height="25" fill="#795548" /><path d="M50 30 L15 80 L85 80 Z" fill={color} strokeLinejoin="round" /><path d="M50 10 L25 50 L75 50 Z" fill={color} strokeLinejoin="round" />{!isOpened && (<><circle cx="35" cy="70" r="4.5" fill="#FFEB3B" /><circle cx="65" cy="65" r="4.5" fill="#FF5252" /><circle cx="45" cy="45" r="4.5" fill="#4FC3F7" /><path d="M50 5 L53 12 L60 12 L54 17 L56 24 L50 20 L44 24 L46 17 L40 12 L47 12 Z" fill="#FFD700" /></>)}</svg>
+        );
+        case 'newyear': return (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><rect x="25" y="15" width="50" height="75" rx="4" fill={color} />{!isOpened && (<><path d="M25 15 Q50 40 75 15" fill="rgba(0,0,0,0.15)" /><path d="M25 15 Q50 35 75 15" stroke="#FFD700" strokeWidth="2.5" fill="none" /><circle cx="50" cy="35" r="10" fill="#FFD700" /><rect x="46" y="31" width="8" height="8" fill={color} /></>)}{isOpened && <rect x="30" y="20" width="40" height="60" fill="rgba(0,0,0,0.1)" />}</svg>
+        );
+        case 'space': return (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><path d="M25 50 Q50 5 75 50" fill="rgba(255,255,255,0.7)" />{!isOpened && <circle cx="50" cy="35" r="12" fill="#81C784" />}<ellipse cx="50" cy="55" rx="45" ry="16" fill={color} /><ellipse cx="50" cy="52" rx="45" ry="12" fill="rgba(255,255,255,0.15)" />{!isOpened && (<><circle cx="20" cy="55" r="3.5" fill="#FFF" /><circle cx="50" cy="61" r="3.5" fill="#FFF" /><circle cx="80" cy="55" r="3.5" fill="#FFF" /></>)}{isOpened && <ellipse cx="50" cy="55" rx="20" ry="5" fill="rgba(0,0,0,0.2)" />}</svg>
+        );
+        case 'ocean': return index % 2 === 0 ? (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><path d="M 25 50 L 5 30 L 5 70 Z" fill={color} /><path d="M 45 25 L 55 5 L 65 25 Z" fill={color} /><path d="M 45 75 L 55 95 L 65 75 Z" fill={color} /><ellipse cx="55" cy="50" rx="35" ry="25" fill={color} />{!isOpened && (<><path d="M 45 26 Q 55 50 45 74" stroke="rgba(255,255,255,0.6)" strokeWidth="4" fill="none" /><path d="M 65 30 Q 75 50 65 70" stroke="rgba(255,255,255,0.6)" strokeWidth="4" fill="none" /><circle cx="75" cy="42" r="4" fill="#333" /><circle cx="76" cy="41" r="1.5" fill="#FFF" /><path d="M 75 55 Q 80 58 85 55" stroke="#333" strokeWidth="2" fill="none" strokeLinecap="round" /></>)}{isOpened && <ellipse cx="55" cy="50" rx="20" ry="10" fill="rgba(0,0,0,0.15)" />}</svg>
+        ) : (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><path d="M 50 10 L 62 35 L 90 35 L 67 55 L 75 85 L 50 65 L 25 85 L 33 55 L 10 35 L 38 35 Z" fill={color} stroke="rgba(0,0,0,0.05)" strokeWidth="2" strokeLinejoin="round" />{!isOpened && (<><circle cx="42" cy="48" r="4" fill="#333" /><circle cx="58" cy="48" r="4" fill="#333" /><circle cx="43" cy="47" r="1.5" fill="#FFF" /><circle cx="59" cy="47" r="1.5" fill="#FFF" /><path d="M 46 56 Q 50 62 54 56" stroke="#333" strokeWidth="2" fill="none" strokeLinecap="round" /><circle cx="50" cy="25" r="2.5" fill="rgba(255,255,255,0.5)" /><circle cx="70" cy="45" r="2.5" fill="rgba(255,255,255,0.5)" /><circle cx="30" cy="45" r="2.5" fill="rgba(255,255,255,0.5)" /><circle cx="60" cy="70" r="2.5" fill="rgba(255,255,255,0.5)" /><circle cx="40" cy="70" r="2.5" fill="rgba(255,255,255,0.5)" /></>)}{isOpened && <circle cx="50" cy="50" r="15" fill="rgba(0,0,0,0.15)" />}</svg>
+        );
+        case 'standard': default: return (
+          <svg viewBox="0 0 100 100" className={commonClass} preserveAspectRatio="xMidYMid meet"><rect x="15" y="40" width="70" height="55" rx="6" fill={color} /><rect x="42" y="40" width="16" height="55" fill="#FFFBEB" className="ribbon-svg" />{!isOpened && (<><rect x="10" y="25" width="80" height="20" rx="4" fill={color} /><rect x="10" y="42" width="80" height="3" fill="rgba(0,0,0,0.15)" /><rect x="42" y="25" width="16" height="20" fill="#FFFBEB" className="ribbon-svg" /><path d="M50 25 C30 0, 15 20, 45 25 Z" fill="#FFFBEB" className="ribbon-svg" /><path d="M50 25 C70 0, 85 20, 55 25 Z" fill="#FFFBEB" className="ribbon-svg" /><circle cx="50" cy="25" r="5" fill="#FDE68A" /></>)}{isOpened && <path d="M10 50 L20 20 L80 20 L90 50 Z" fill="rgba(0,0,0,0.1)" />}</svg>
+        );
+      }
+    };
+
+    function App() {
+      const [isAppReady, setIsAppReady] = useState(false); 
+      const [isDrawing, setIsDrawing] = useState(false); 
+      const [students, setStudents] = useState([]); 
+      const [boxes, setBoxes] = useState([]);       
+      const [history, setHistory] = useState([]);   
+      const [confetti, setConfetti] = useState([]); 
+      const [toast, setToast] = useState(null);
+      const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null, type: 'warning' });
+      const [isFullscreen, setIsFullscreen] = useState(false);
+      const [view, setView] = useState('main'); 
+      const [revealDataList, setRevealDataList] = useState([]); 
+      const fileInputRef = useRef(null); 
+      
+      const [settings, setSettings] = useState(() => {
+        const saved = localStorage.getItem('MysteryGiftBox_Settings');
+        if (saved) try { return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch (e) { console.error(e); }
+        return DEFAULT_SETTINGS;
+      });
+
+      useEffect(() => { localStorage.setItem('MysteryGiftBox_Settings', JSON.stringify(settings)); }, [settings]);
+      useEffect(() => { const t = setTimeout(() => setIsAppReady(true), 500); return () => clearTimeout(t); }, []);
+
+      useEffect(() => {
+        const fn = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement));
+        document.addEventListener('fullscreenchange', fn); document.addEventListener('webkitfullscreenchange', fn); document.addEventListener('msfullscreenchange', fn);
+        return () => { document.removeEventListener('fullscreenchange', fn); document.removeEventListener('webkitfullscreenchange', fn); document.removeEventListener('msfullscreenchange', fn); };
+      }, []);
+
+      useEffect(() => { parseAndInitialize(); }, [settings.rawList, settings.inputMode, settings.totalSeats, settings.emptySeats, settings.includeEmpty, settings.theme]);
+
+      const parseAndInitialize = () => {
+        let list = [];
+        if (settings.inputMode === 'number') {
+          const total = parseInt(settings.totalSeats) || 0;
+          const empty = settings.emptySeats.split(/[,\s、]+/).map(n => parseInt(n)).filter(n => !isNaN(n));
+          for (let i = 1; i <= total; i++) if (!empty.includes(i)) list.push({ id: `stu-${i}`, no: i, name: `同學`, type: 'student' });
+        } else {
+          list = settings.rawList.split('\n').filter(l => l.trim() !== '').map((line, i) => {
+            const parts = line.trim().split(/[\s,、\t]+/);
+            if (parts.length > 1 && !isNaN(parts[0])) return { id: `stu-${i}`, no: parts[0], name: parts.slice(1).join(' '), type: 'student' };
+            return { id: `stu-${i}`, no: i + 1, name: line.trim(), type: 'student' };
+          });
+        }
+        setStudents(list); generateBoxes(list);
+      };
+
+      const generateBoxes = (list) => {
+        let items = [...list];
+        if (settings.includeEmpty && items.length > 0) {
+          for (let i = 0; i < Math.ceil(items.length * 0.2); i++) items.push({ id: `extra-${i}`, type: Math.random() > 0.5 ? 'empty' : 'surprise', message: ENCOURAGEMENTS[Math.floor(Math.random() * ENCOURAGEMENTS.length)] });
+        }
+        for (let i = items.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [items[i], items[j]] = [items[j], items[i]]; }
+        const colors = THEMES[settings.theme].boxColors;
+        setBoxes(items.map((item, index) => ({ boxId: `box-${index}`, color: colors[index % colors.length], state: 'idle', content: item })));
+        setRevealDataList([]); setIsDrawing(false); 
+      };
+
+      const showToast = (msg, type = 'info') => { setToast({ message: msg, type }); setTimeout(() => setToast(null), 3000); };
+
+      const toggleFullscreen = async () => {
+        try {
+          const doc = document.documentElement;
+          if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            const req = doc.requestFullscreen || doc.webkitRequestFullscreen || doc.msRequestFullscreen;
+            if (req) await req.call(doc).catch(() => showToast("瀏覽器阻擋全螢幕", "error")); else showToast("不支援全螢幕", "error");
+          } else {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+            if (exit) await exit.call(document);
+          }
+        } catch (e) { showToast("阻擋切換全螢幕", "error"); }
+      };
+
+      const handleExportSettings = () => {
+        try {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" }));
+          link.download = `抽籤設定_${new Date().toLocaleDateString('zh-TW').replace(/\//g, '')}.json`;
+          link.click(); showToast("設定匯出成功！", "success");
+        } catch (e) { showToast("匯出失敗", "error"); }
+      };
+
+      const handleImportSettings = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (data && data.rawList !== undefined) { setSettings({ ...DEFAULT_SETTINGS, ...data }); showToast("設定匯入成功！", "success"); }
+            else showToast("無效設定檔", "error");
+          } catch (err) { showToast("檔案無法解析", "error"); }
+          e.target.value = '';
+        }; reader.readAsText(file);
+      };
+
+      const fireConfetti = () => {
+        const colors = ['#FF9AA2', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA', '#FDE68A', '#A78BFA'];
+        setConfetti(Array.from({ length: 80 }).map((_, i) => ({ id: Date.now() + i, left: Math.random() * 100 + 'vw', backgroundColor: colors[Math.floor(Math.random() * colors.length)], animationDuration: (Math.random() * 2 + 2) + 's', animationDelay: (Math.random() * 0.2) + 's', width: (Math.random() * 8 + 6) + 'px', height: (Math.random() * 8 + 6) + 'px', rotate: Math.random() * 360 + 'deg' })));
+        setTimeout(() => setConfetti([]), 4000); 
+      };
+
+      const getStudentText = (c) => c.type !== 'student' ? '' : settings.displayMode === 'number' ? `${c.no}號` : settings.displayMode === 'name' ? c.name : `${c.no}號 ${c.name}`;
+      const getAvatar = (c) => c.type === 'surprise' ? '⭐' : c.type === 'empty' ? '💨' : AVATARS[(parseInt(c.no) - 1 || 0) % AVATARS.length];
+
+      const openBoxes = (indexes) => {
+        if (isDrawing) return; setIsDrawing(true); 
+        setBoxes(p => p.map((b, i) => indexes.includes(i) ? { ...b, state: 'shaking' } : b)); playSound('shake', settings.soundEnabled);
+        setTimeout(() => {
+          const contents = indexes.map(i => boxes[i].content);
+          setBoxes(p => p.map((b, i) => indexes.includes(i) ? { ...b, state: 'opened' } : b));
+          setRevealDataList(contents);
+          if (contents.some(c => c.type === 'student' || c.type === 'surprise')) { playSound('tada', settings.soundEnabled); fireConfetti(); } else playSound('empty', settings.soundEnabled);
+          const newItems = contents.filter(c => c.type === 'student').map(c => ({ time: new Date().toLocaleTimeString('zh-TW', {hour: '2-digit', minute:'2-digit'}), task: settings.title + (indexes.length > 1 ? ' (群組)' : ''), target: getStudentText(c) }));
+          if (newItems.length > 0) setHistory(p => [...newItems, ...p]);
+          setIsDrawing(false); 
+        }, settings.fastAnim ? 600 : 1500);
+      };
+
+      const handleBoxClick = (index) => {
+        if (settings.isLocked) return showToast("請先點擊上方解鎖 🔓", "warning");
+        if (isDrawing || boxes[index].state !== 'idle') return;
+        const idxs = [index];
+        if (settings.drawCount > 1) {
+          const avail = boxes.map((b, i) => b.state === 'idle' && i !== index ? i : -1).filter(i => i !== -1);
+          for (let i = 0; i < Math.min(settings.drawCount - 1, avail.length); i++) {
+            const rand = Math.floor(Math.random() * avail.length); idxs.push(avail[rand]); avail.splice(rand, 1);
+          }
+        }
+        openBoxes(idxs);
+      };
+
+      const handleRandomDraw = () => {
+        if (settings.isLocked) return showToast("請先點擊上方解鎖 🔓", "warning");
+        if (isDrawing) return; 
+        const avail = boxes.map((b, i) => b.state === 'idle' ? i : -1).filter(i => i !== -1);
+        if (avail.length === 0) return showToast("已經沒有未開啟的項目囉！🎁", "warning");
+        const idxs = [];
+        for (let i = 0; i < Math.min(settings.drawCount, avail.length); i++) {
+          const rand = Math.floor(Math.random() * avail.length); idxs.push(avail[rand]); avail.splice(rand, 1);
+        }
+        openBoxes(idxs);
+      };
+
+      const handleAbsentRedraw = () => { setRevealDataList([]); playSound('click', settings.soundEnabled); setTimeout(() => handleRandomDraw(), 300); };
+      const handleReset = () => setConfirmDialog({ isOpen: true, type: 'warning', message: '確定要重新洗牌嗎？', onConfirm: () => { generateBoxes(students); playSound('click', settings.soundEnabled); showToast("已重新洗牌！", "success"); }});
+      const handleQuickReset = () => setConfirmDialog({ isOpen: true, type: 'warning', message: '確定重置畫面並清空紀錄？', onConfirm: () => { generateBoxes(students); setHistory([]); playSound('click', settings.soundEnabled); showToast("已重置！", "success"); }});
+      const handleClearHistory = () => setConfirmDialog({ isOpen: true, type: 'danger', message: '確定清空所有紀錄？', onConfirm: () => { setHistory([]); playSound('click', settings.soundEnabled); showToast("紀錄已清空", "success"); }});
+      const handleFactoryReset = () => setConfirmDialog({ isOpen: true, type: 'danger', message: '恢復預設值將清除設定與名單！', onConfirm: () => { setSettings({ ...DEFAULT_SETTINGS }); setHistory([]); playSound('click', settings.soundEnabled); showToast("已恢復預設狀態", "success"); setView('main'); }});
+      const copyHistory = () => { if (history.length === 0) return showToast("無紀錄可複製", "warning"); navigator.clipboard.writeText(history.map(h => `[${h.time}] ${h.task} - ${h.target}`).join('\n')).then(() => showToast("已複製到剪貼簿", "success")).catch(() => showToast("複製失敗", "error")); };
+      const exportHistoryToCSV = () => {
+        if (history.length === 0) return showToast("無紀錄可匯出", "warning");
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob(["\uFEFF時間,抽籤主題,抽中名單\n" + history.map(h => `"${h.time}","${h.task}","${h.target}"`).join('\n')], { type: 'text/csv;charset=utf-8;' }));
+        link.download = `抽籤紀錄_${new Date().toLocaleDateString('zh-TW')}.csv`; link.click(); showToast("紀錄已下載！", "success");
+      };
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+          if (confirmDialog.isOpen) { if (e.code === 'Enter') { e.preventDefault(); confirmDialog.onConfirm?.(); setConfirmDialog({ isOpen: false }); } else if (e.code === 'Escape') setConfirmDialog({ isOpen: false }); return; }
+          if (e.code === 'Space') { e.preventDefault(); if (revealDataList.length === 0 && !settings.isLocked && view === 'main' && !isDrawing) handleRandomDraw(); } 
+          else if (e.code === 'Enter' || e.code === 'Escape') { if (revealDataList.length > 0) { setRevealDataList([]); playSound('click', settings.soundEnabled); } else if (view !== 'main') { setView('main'); playSound('click', settings.soundEnabled); } }
+        };
+        window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [revealDataList, settings.isLocked, view, boxes, confirmDialog, settings.drawCount, isDrawing]);
+
+      const remCount = boxes.filter(b => b.state !== 'opened' && b.content.type === 'student').length;
+      if (!isAppReady) return (<div className={`min-h-screen flex flex-col items-center justify-center ${THEMES[settings.theme].bg}`}><Gift className="w-16 h-16 text-pink-500 animate-bounce mb-4" /><div className="text-xl font-bold text-gray-700 animate-pulse tracking-widest">系統環境安全準備中...</div></div>);
+
+      return (
+        <div className={`min-h-screen transition-colors duration-500 ${THEMES[settings.theme].bg} flex flex-col relative overflow-hidden`} style={{ fontFamily: '"Nunito", "Comic Sans MS", "Chalkboard SE", "PingFang TC", sans-serif' }}>
+          <style>{`@keyframes shake-box{0%,100%{transform:rotate(0deg) scale(1)}25%,75%{transform:rotate(-8deg) scale(1.05)}50%{transform:rotate(8deg) scale(1.05)}} .animate-shake-box{animation:shake-box .4s ease-in-out infinite} @keyframes pop-in{0%{transform:scale(.5);opacity:0}70%{transform:scale(1.1);opacity:1}100%{transform:scale(1);opacity:1}} .animate-pop{animation:pop-in .4s cubic-bezier(.175,.885,.32,1.275) forwards} .ribbon-svg{filter:drop-shadow(0px 2px 2px rgba(0,0,0,.15))} @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}} .animate-float{animation:float 2.5s ease-in-out infinite} @keyframes bounce-soft{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}} @keyframes fall{0%{transform:translateY(-10vh) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}} .confetti-piece{position:fixed;top:-10vh;z-index:70;pointer-events:none;animation:fall linear forwards;border-radius:2px} ::-webkit-scrollbar{width:8px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.2);border-radius:10px} ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.3)}`}</style>
+          
+          {toast && (<div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] animate-pop pointer-events-none"><div className={`px-6 py-3 rounded-full shadow-2xl font-bold flex items-center gap-3 border-2 ${toast.type === 'error' ? 'bg-red-50 text-red-600 border-red-200' : toast.type === 'success' ? 'bg-green-50 text-green-600 border-green-200' : toast.type === 'warning' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' : 'bg-gray-800 text-white border-gray-700'}`}>{toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}{toast.message}</div></div>)}
+          
+          {confirmDialog.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"><div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl animate-pop text-center border-4 border-white relative overflow-hidden"><div className={`absolute top-0 left-0 w-full h-24 opacity-20 ${confirmDialog.type === 'danger' ? 'bg-red-400' : 'bg-yellow-400'}`}></div><div className={`relative w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner ${confirmDialog.type === 'danger' ? 'bg-red-100 text-red-500' : 'bg-yellow-100 text-yellow-500'}`}><AlertCircle className="w-10 h-10 pointer-events-none" /></div><h3 className="relative text-2xl font-black text-gray-800 mb-3">請確認</h3><p className="relative text-gray-600 mb-8 font-medium text-lg leading-relaxed whitespace-pre-line">{confirmDialog.message}</p><div className="relative flex gap-3"><button onClick={() => setConfirmDialog({ isOpen: false })} className="flex-1 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full font-bold transition-colors">取消 (Esc)</button><button onClick={() => { confirmDialog.onConfirm?.(); setConfirmDialog({ isOpen: false }); }} className={`flex-1 py-3.5 text-white rounded-full font-bold shadow-md transition-transform hover:scale-105 active:scale-95 ${confirmDialog.type === 'danger' ? 'bg-gradient-to-r from-red-500 to-pink-500' : 'bg-gradient-to-r from-yellow-500 to-orange-500'}`}>確定 (Enter)</button></div></div></div>
+          )}
+
+          <header className="relative z-50 p-3 sm:p-4 flex justify-between items-center bg-white/60 backdrop-blur-md shadow-sm border-b-4 border-white/80">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-br from-pink-400 to-purple-500 p-2 sm:p-2.5 rounded-xl sm:rounded-2xl shadow-md rotate-3"><Gift className="w-6 h-6 sm:w-7 sm:h-7 text-white pointer-events-none" /></div>
+              <h1 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 tracking-wider drop-shadow-sm pointer-events-none">神秘禮物盒班級抽籤系統</h1>
+            </div>
+            <div className="flex gap-2 sm:gap-3">
+              <input type="file" ref={fileInputRef} onChange={handleImportSettings} style={{ display: 'none' }} accept=".json" />
+              <button onClick={handleExportSettings} className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 h-10 sm:h-12 bg-white/90 hover:bg-white rounded-full text-blue-500 hover:text-blue-600 font-bold transition shadow-sm border border-gray-100 active:scale-95 cursor-pointer" title="匯出老師設定"><Save size={18} className="pointer-events-none" /><span className="pointer-events-none text-sm sm:text-base">匯出</span></button>
+              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 h-10 sm:h-12 bg-white/90 hover:bg-white rounded-full text-emerald-500 hover:text-emerald-600 font-bold transition shadow-sm border border-gray-100 active:scale-95 cursor-pointer" title="匯入老師設定"><Upload size={18} className="pointer-events-none" /><span className="pointer-events-none text-sm sm:text-base">匯入</span></button>
+              <div className="w-px h-8 bg-gray-300 mx-1 hidden sm:block self-center"></div>
+              <button onClick={handleQuickReset} className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-white/90 hover:bg-white rounded-full text-orange-500 hover:text-orange-600 transition-all shadow-sm border border-gray-100 active:scale-95 cursor-pointer" title="重置畫面並清空紀錄"><RotateCcw size={20} className="pointer-events-none" /></button>
+              <button onClick={() => { setSettings(s => ({ ...s, isLocked: !s.isLocked })); playSound('click', settings.soundEnabled); }} className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-all shadow-sm active:scale-95 cursor-pointer ${settings.isLocked ? 'bg-gradient-to-r from-red-400 to-red-500 text-white shadow-[0_0_15px_rgba(248,113,113,0.6)]' : 'bg-gradient-to-r from-green-400 to-green-500 text-white'}`} title={settings.isLocked ? "解鎖以開放抽籤" : "鎖定防點擊"}>{settings.isLocked ? <Lock size={20} className="pointer-events-none" /> : <Unlock size={20} className="pointer-events-none" />}</button>
+              <button onClick={() => { setView('history'); playSound('click', settings.soundEnabled); }} className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-white/90 hover:bg-white rounded-full text-indigo-500 transition-all shadow-sm border border-gray-100 active:scale-95 cursor-pointer" title="抽籤紀錄"><History size={20} className="pointer-events-none" /></button>
+              <button onClick={() => { setView('settings'); playSound('click', settings.soundEnabled); }} className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-white/90 hover:bg-white rounded-full text-pink-500 transition-all shadow-sm border border-gray-100 active:scale-95 cursor-pointer" title="老師設定"><Settings size={20} className="pointer-events-none" /></button>
+            </div>
+          </header>
+
+          <main className="flex-1 p-2 sm:p-6 flex flex-col items-center justify-start overflow-y-auto w-full">
+            {settings.title && (<div className="mb-4 sm:mb-8 mt-2 sm:mt-4 bg-white/90 backdrop-blur-sm px-8 py-3 rounded-full shadow-md border-2 border-pink-100 inline-flex items-center gap-2 text-lg sm:text-2xl font-black text-gray-700 animate-[bounce-soft_4s_infinite] pointer-events-none">✨ <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600">{settings.title}</span> ✨</div>)}
+            <div className="w-full max-w-[1600px] flex flex-wrap justify-center px-1 sm:px-4 pb-10">
+              {boxes.map((box, index) => (
+                <div key={box.boxId} className="w-[25%] sm:w-[20%] md:w-[10%] p-1.5 sm:p-2 lg:p-3 flex justify-center items-center">
+                  <div onClick={() => handleBoxClick(index)} className={`relative w-full max-w-[120px] flex flex-col items-center justify-center aspect-square cursor-pointer transition-all duration-300 ${box.state === 'idle' && !settings.isLocked && !isDrawing ? 'animate-float hover:scale-110 hover:rotate-3 hover:z-10' : ''} ${(box.state === 'idle' && settings.isLocked) || (box.state === 'idle' && isDrawing) ? 'opacity-80 cursor-not-allowed' : ''} ${box.state === 'shaking' ? 'animate-shake-box scale-110 z-10' : ''} ${box.state === 'opened' ? 'opacity-50 cursor-default scale-95' : ''}`}>
+                    {box.state !== 'opened' ? (<ThemeIcon theme={settings.theme} color={box.color} isOpened={false} index={index} />) : (
+                      <div className="w-full h-full flex flex-col items-center justify-end pb-2 sm:pb-4 relative pointer-events-none">
+                        <ThemeIcon theme={settings.theme} color={box.color} isOpened={true} index={index} />
+                        <div className="z-10 bg-white/95 rounded-xl px-2 py-1 text-[11px] sm:text-xs md:text-sm font-bold shadow-sm flex items-center justify-center gap-1 overflow-hidden max-w-[95%] border-2 border-pink-100">
+                          {settings.showAvatars && <span className="text-[10px] sm:text-xs">{getAvatar(box.content)}</span>}
+                          <span className="whitespace-nowrap overflow-hidden text-ellipsis">{box.content.type === 'student' ? getStudentText(box.content) : box.content.type === 'surprise' ? '⭐驚喜' : '💨空號'}</span>
+                        </div>
+                      </div>
+                    )}
+                    {settings.isLocked && box.state === 'idle' && (<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-md rounded-full p-2 opacity-0 hover:opacity-100 transition-opacity pointer-events-none"><Lock className="text-white w-5 h-5 sm:w-6 sm:h-6" /></div>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </main>
+
+          <footer className="p-3 sm:p-5 bg-white/70 backdrop-blur-md flex flex-wrap justify-between items-center rounded-t-3xl mx-2 sm:mx-4 mt-auto border-t-4 border-white gap-3 shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative z-40">
+            <div className="text-gray-700 font-bold text-sm sm:text-lg flex items-center gap-2 bg-white/80 px-4 py-2.5 rounded-full shadow-sm border border-gray-100">
+              {settings.hideRemaining ? (<div className="flex items-center gap-2 text-gray-500 pointer-events-none"><EyeOff size={18} /> <span>神秘模式進行中</span></div>) : (<><span className="pointer-events-none">🎯 剩餘：</span><span className="text-xl sm:text-3xl font-black text-pink-500 leading-none pointer-events-none">{remCount}</span><span className="text-xs sm:text-base text-gray-400 font-medium leading-none mt-1 pointer-events-none">/ {students.length}</span></>)}
+            </div>
+            <div className="order-last sm:order-none w-full sm:w-auto text-center pointer-events-none"><div className="inline-block text-sm sm:text-base font-bold text-purple-600 bg-purple-100/80 px-5 py-2 rounded-full shadow-sm border border-purple-200 animate-pulse">© 2026 鄭念慈 版權所有</div></div>
+            <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+              <button onClick={handleRandomDraw} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-3 bg-white text-pink-500 border-2 border-pink-400 hover:bg-pink-50 rounded-full font-bold shadow-sm transition-transform hover:scale-105 active:scale-95 cursor-pointer"><Star size={20} className="pointer-events-none" /><span className="hidden sm:inline pointer-events-none">隨機抽 {settings.drawCount} 個</span><span className="sm:hidden pointer-events-none">隨機 {settings.drawCount}</span></button>
+              <button onClick={handleReset} className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white rounded-full font-bold shadow-lg shadow-pink-200/50 transition-transform hover:scale-105 active:scale-95 cursor-pointer"><RotateCcw size={20} className="pointer-events-none" /><span className="hidden sm:inline pointer-events-none">重新洗牌</span><span className="sm:hidden pointer-events-none">洗牌</span></button>
+            </div>
+          </footer>
+
+          {confetti.map(c => (<div key={c.id} className="confetti-piece" style={{ left: c.left, backgroundColor: c.backgroundColor, animationDuration: c.animationDuration, animationDelay: c.animationDelay, width: c.width, height: c.height, transform: `rotate(${c.rotate})` }} />))}
+
+          {revealDataList.length > 0 && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+              <div className={`bg-white rounded-[2.5rem] p-6 sm:p-10 w-full shadow-2xl animate-pop relative overflow-hidden flex flex-col items-center text-center border-4 border-pink-100 my-auto ${revealDataList.length > 2 ? 'max-w-4xl' : 'max-w-xl'}`}>
+                <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-pink-100/80 to-transparent opacity-60 pointer-events-none"></div>
+                <button onClick={() => { setRevealDataList([]); playSound('click', settings.soundEnabled); }} className="absolute top-5 right-5 p-2 text-pink-400 hover:text-white hover:bg-pink-400 bg-pink-50 rounded-full transition-colors z-10 shadow-sm cursor-pointer"><X size={24} className="pointer-events-none" /></button>
+                <h2 className="text-xl text-gray-500 font-bold mb-6 z-10 tracking-widest pointer-events-none">{settings.title}</h2>
+                <div className={`grid gap-6 w-full z-10 mb-8 ${revealDataList.length === 1 ? 'grid-cols-1' : revealDataList.length === 2 ? 'grid-cols-1 sm:grid-cols-2' : revealDataList.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'}`}>
+                  {revealDataList.map((data, idx) => (
+                    <div key={idx} className="flex flex-col items-center p-4 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow pointer-events-none">
+                      {data.type === 'student' ? (<><div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-pink-50 to-purple-50 rounded-full flex items-center justify-center mb-4 shadow-inner border-2 border-white text-4xl sm:text-5xl">{settings.showAvatars ? getAvatar(data) : '👦👧'}</div><div className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 py-1 leading-tight">{settings.displayMode === 'number' ? `${data.no}號` : settings.displayMode === 'name' ? data.name : <div className="flex flex-col items-center gap-1"><span className="text-lg sm:text-xl text-gray-400 font-bold">{data.no}號</span><span>{data.name}</span></div>}</div></>) : data.type === 'surprise' ? (<><div className="w-20 h-20 sm:w-24 sm:h-24 bg-yellow-50 rounded-full flex items-center justify-center mb-4 shadow-inner border-2 border-white text-4xl sm:text-5xl">⭐</div><div className="text-2xl font-black text-yellow-600 mb-2 py-1">驚喜！</div><div className="text-sm font-bold text-gray-500">{data.message}</div></>) : (<><div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-50 rounded-full flex items-center justify-center mb-4 shadow-inner border-2 border-white text-4xl sm:text-5xl">💨</div><div className="text-2xl font-black text-gray-400 py-1">空號</div></>)}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md mx-auto z-10">
+                  <button onClick={handleAbsentRedraw} className="flex-1 px-4 py-3.5 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-full font-bold transition-colors text-sm sm:text-base border-2 border-gray-200 cursor-pointer">{revealDataList.length > 1 ? `重抽 ${settings.drawCount} 個` : '有人不在？重抽'}</button>
+                  <button onClick={() => { setRevealDataList([]); playSound('click', settings.soundEnabled); }} className="flex-[2] px-8 py-3.5 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white rounded-full font-bold shadow-lg shadow-pink-200 transition-transform hover:scale-105 active:scale-95 text-lg cursor-pointer">繼續 (Enter)</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === 'settings' && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+                <div className="flex justify-between items-center mb-6 border-b-2 border-gray-100 pb-4"><h2 className="text-2xl font-black flex items-center gap-3 text-gray-800"><div className="bg-indigo-100 p-2 rounded-lg text-indigo-600 pointer-events-none"><Settings size={24}/></div>老師控制台</h2><button onClick={() => setView('main')} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"><X size={28} className="pointer-events-none" /></button></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1">
+                  <div className="space-y-5">
+                    <div><label className="block text-sm font-bold text-gray-700 mb-2">抽籤主題 / 標題</label><input type="text" value={settings.title} onChange={(e) => setSettings({...settings, title: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition-all outline-none font-bold text-gray-700" placeholder="例如：神秘幸運得主..." /></div>
+                    <div className="bg-indigo-50/50 p-5 rounded-2xl space-y-4 border border-indigo-100"><div className="flex justify-between items-center border-b border-indigo-100 pb-3"><h3 className="font-black text-indigo-900">名單設定</h3><span className="text-sm font-bold text-indigo-600 bg-indigo-100 px-3 py-1 rounded-full">有效 {students.length} 人</span></div><div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm"><button onClick={() => setSettings({...settings, inputMode: 'list'})} className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors cursor-pointer ${settings.inputMode === 'list' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>文字貼上</button><button onClick={() => setSettings({...settings, inputMode: 'number'})} className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-colors cursor-pointer ${settings.inputMode === 'number' ? 'bg-indigo-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>按座號產生</button></div>
+                      {settings.inputMode === 'list' ? (<div><textarea value={settings.rawList} onChange={(e) => setSettings({...settings, rawList: e.target.value})} className="w-full h-[180px] border-2 border-gray-200 rounded-xl p-3 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none resize-none font-mono" placeholder="1 王小明\n2 陳小華..." /><p className="text-sm text-indigo-600 mt-2 font-bold pointer-events-none">💡 可直接貼上「學生姓名」或「獎項名稱」</p></div>) : (<div className="space-y-4"><div><label className="block text-sm font-bold text-gray-700 mb-1">班級總人數 (最大座號)</label><input type="number" min="1" value={settings.totalSeats} onChange={(e) => setSettings({...settings, totalSeats: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-indigo-50 outline-none" /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">設定空號</label><input type="text" placeholder="請用逗號分隔，如：4, 14" value={settings.emptySeats} onChange={(e) => setSettings({...settings, emptySeats: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-indigo-50 outline-none" /></div></div>)}
+                    </div>
+                  </div>
+                  <div className="space-y-5">
+                    <div className="bg-gray-50 p-5 rounded-2xl space-y-4 border border-gray-100"><h3 className="font-black text-gray-700 border-b border-gray-200 pb-2">群組與顯示設定</h3><div className="flex items-center justify-between"><div className="flex flex-col"><span className="text-sm font-bold text-gray-800">單次連抽數量 🧑‍🤝‍🧑</span></div><select value={settings.drawCount} onChange={(e) => setSettings({...settings, drawCount: parseInt(e.target.value)})} className="border-2 border-gray-200 rounded-xl p-2 bg-white focus:border-indigo-500 outline-none font-bold text-indigo-600 text-center w-24 cursor-pointer">{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>一次抽 {n} 人</option>)}</select></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-gray-800">抽中顯示方式</span><select value={settings.displayMode} onChange={(e) => setSettings({...settings, displayMode: e.target.value})} className="border-2 border-gray-200 rounded-xl p-2 bg-white focus:border-indigo-500 outline-none font-bold text-gray-700 w-32 cursor-pointer"><option value="both">座號 + 姓名</option><option value="name">僅顯示姓名</option><option value="number">僅顯示座號</option></select></div><div className="flex items-center justify-between"><span className="text-sm font-bold text-gray-800">畫面主題風格 🎨</span><select value={settings.theme} onChange={(e) => setSettings({...settings, theme: e.target.value})} className="border-2 border-gray-200 rounded-xl p-2 bg-white focus:border-indigo-500 outline-none font-bold text-gray-700 w-32 cursor-pointer">{Object.entries(THEMES).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}</select></div></div>
+                    <div className="bg-gray-50 p-5 rounded-2xl space-y-4 border border-gray-100"><h3 className="font-black text-gray-700 border-b border-gray-200 pb-2">進階體驗開關</h3>
+                      {[{ key: 'showAvatars', label: '顯示專屬動物頭像 🦊' }, { key: 'includeEmpty', label: '加入驚喜/干擾盒 🎁' }, { key: 'hideRemaining', label: '隱藏剩餘人數 🎭' }, { key: 'fastAnim', label: '快速開箱模式 ⚡' }].map((item) => (
+                        <label key={item.key} className="flex items-center justify-between cursor-pointer py-1"><span className="text-sm font-bold text-gray-800 pointer-events-none">{item.label}</span><div className="relative"><input type="checkbox" checked={settings[item.key]} onChange={(e) => setSettings({...settings, [item.key]: e.target.checked})} className="sr-only peer" /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div></div></label>
+                      ))}
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-200"><span className="text-sm font-bold text-gray-800">系統音效開啟 🎵</span><button onClick={() => setSettings({...settings, soundEnabled: !settings.soundEnabled})} className={`p-2 rounded-xl transition-colors cursor-pointer ${settings.soundEnabled ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-500'}`}>{settings.soundEnabled ? <Volume2 size={20} className="pointer-events-none" /> : <VolumeX size={20} className="pointer-events-none" />}</button></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-8 pt-5 border-t-2 border-gray-100 flex justify-between items-center bg-white"><button onClick={handleFactoryReset} className="text-red-500 hover:text-red-700 text-sm font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"><RotateCcw size={16} className="pointer-events-none" /> 恢復預設值</button><button onClick={() => setView('main')} className="px-10 py-3.5 bg-indigo-600 text-white rounded-full font-black shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all text-lg cursor-pointer">完成設定</button></div>
+              </div>
+            </div>
+          )}
+
+          {view === 'history' && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"><div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col"><div className="flex justify-between items-center mb-6 border-b-2 border-gray-100 pb-4"><h2 className="text-2xl font-black flex items-center gap-3 text-gray-800"><div className="bg-pink-100 p-2 rounded-lg text-pink-600 pointer-events-none"><Calendar size={24}/></div>抽籤紀錄</h2><div className="flex items-center gap-2"><button onClick={exportHistoryToCSV} className="p-2 hover:bg-green-50 rounded-full text-green-600 transition-colors cursor-pointer" title="下載 Excel"><Download size={22} className="pointer-events-none" /></button><button onClick={copyHistory} className="p-2 hover:bg-indigo-50 rounded-full text-indigo-500 transition-colors cursor-pointer" title="複製紀錄"><Copy size={22} className="pointer-events-none" /></button><button onClick={() => setView('main')} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"><X size={26} className="pointer-events-none" /></button></div></div>
+              <div className="flex-1 overflow-y-auto pr-2 pb-4">
+                {history.length === 0 ? (<div className="text-center py-16 text-gray-400 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 pointer-events-none"><History className="w-16 h-16 mx-auto mb-4 opacity-20" /><p className="font-bold text-lg text-gray-500">尚無抽籤紀錄</p></div>) : (<ul className="space-y-3">{history.map((record, i) => (<li key={i} className="flex justify-between items-center bg-white p-4 rounded-2xl border-2 border-gray-100 shadow-sm hover:border-pink-200 transition-colors group"><div className="flex flex-col"><span className="font-black text-gray-800 text-xl pointer-events-none">{record.target}</span><span className="text-sm text-gray-500 font-medium mt-1 pointer-events-none">{record.task}</span></div><span className="text-sm font-bold text-indigo-500 bg-indigo-50 px-3 py-1.5 rounded-lg group-hover:bg-indigo-100 transition-colors pointer-events-none">{record.time}</span></li>))}</ul>)}
+              </div>
+              <div className="mt-4 pt-5 border-t-2 border-gray-100 flex justify-between items-center"><button onClick={handleClearHistory} disabled={history.length === 0} className={`text-sm font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1 cursor-pointer ${history.length === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:text-red-700 hover:bg-red-50'}`}><Trash2 size={16} className="pointer-events-none" /> 清空紀錄</button><button onClick={() => setView('main')} className="px-8 py-3 bg-gray-800 text-white rounded-full font-bold shadow-md hover:bg-gray-900 transition-colors cursor-pointer">關閉</button></div>
+            </div></div>
+          )}
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
